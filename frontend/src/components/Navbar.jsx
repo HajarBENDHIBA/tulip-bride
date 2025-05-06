@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
 import { FaShoppingCart, FaUser, FaSignOutAlt } from 'react-icons/fa';
+import { useCart } from '@/context/CartContext';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -12,6 +13,10 @@ const Navbar = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const dropdownRef = useRef(null);
   const router = useRouter();
+  const { cart } = useCart();
+
+  // Calculate total items in cart
+  const cartItemCount = cart.reduce((total, item) => total + item.quantity, 0);
 
   // Check authentication status
   useEffect(() => {
@@ -78,8 +83,13 @@ const Navbar = () => {
 
           {/* Icons */}
           <div className="flex items-center space-x-4">
-            <Link href="/cart" className="text-gray-600 hover:text-[#B76E79]">
+            <Link href="/cart" className="text-gray-600 hover:text-[#B76E79] relative">
               <FaShoppingCart className="h-6 w-6" />
+              {cartItemCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-[#B76E79] text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {cartItemCount}
+                </span>
+              )}
             </Link>
             
             {/* Profile Dropdown */}
@@ -92,22 +102,19 @@ const Navbar = () => {
               </button>
 
               {isOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1">
                   {isAuthenticated ? (
                     <>
                       <Link
                         href={isAdmin ? "/admin/dashboard" : "/user/dashboard"}
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => setIsOpen(false)}
                       >
                         Dashboard
                       </Link>
-                    
                       <button
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                         onClick={handleLogout}
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       >
-                        <FaSignOutAlt className="mr-2" />
                         Logout
                       </button>
                     </>
@@ -116,14 +123,12 @@ const Navbar = () => {
                       <Link
                         href="/login"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => setIsOpen(false)}
                       >
                         Login
                       </Link>
                       <Link
                         href="/register"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => setIsOpen(false)}
                       >
                         Register
                       </Link>

@@ -1,76 +1,16 @@
-import Link from 'next/link';
+'use client';
 
-const weddingShoes = [
-  {
-    id: 1,
-    name: "Pearl Bridal Pumps",
-    price: 120,
-    image: "./shoes/shoe1.jpg",
-    description: "Graceful pumps adorned with pearls, perfect for a luxurious bridal look."
-  },
-  {
-    id: 2,
-    name: "Low-Heel Bridal Pumps",
-    price: 90,
-    image: "./shoes/shoe2.jpg",
-    description: "Delicate and comfortable, ideal for brides who plan to celebrate all day."
-  },
-  {
-    id: 3,
-    name: "Tulle Bridal Pumps",
-    price: 100,
-    image: "./shoes/shoe3.jpg",
-    description: "Soft tulle accents for a fairytale-inspired wedding moment."
-  },
-  {
-    id: 4,
-    name: "Embroidered Bridal Pumps",
-    price: 200,
-    image: "./shoes/shoe4.jpg",
-    description: "Intricate embroidery to complement the finest wedding dresses."
-  },
-  {
-    id: 5,
-    name: "Crystal Bridal Pumps",
-    price: 180,
-    image: "./shoes/shoe5.jpg",
-    description: "Sparkling pumps to light up every step down the aisle."
-  },
-  {
-    id: 6,
-    name: "Crystal-Kissed Pumps",
-    price: 160,
-    image: "./shoes/shoe6.jpg",
-    description: "Delicate crystals add just the right sparkle for a refined bridal glow."
-  },
-  {
-    id: 7,
-    name: "Brilliant Bridal Pumps",
-    price: 200,
-    image: "./shoes/shoe7.jpg",
-    description: "Fully embellished with shimmer, perfect for a dazzling bridal entrance."
-  },
-  {
-    id: 8,
-    name: "Minimal Chic Pumps",
-    price: 130,
-    image: "./shoes/shoe8.jpg",
-    description: "Sleek white pumps with a clean design for the modern minimalist bride."
-  },
-  {
-    id: 9,
-    name: "Lace Bridal Pumps",
-    price: 150,
-    image: "./shoes/shoe9.jpg",
-    description: "Romantic lace-covered heels to match the charm of your wedding gown."
-  },
-];
+import Link from 'next/link';
+import { useCart } from '@/context/CartContext';
+import { products } from '@/data/products';
 
 export default function WeddingShoesPage() {
+  const { addToCart } = useCart();
+  
   // Split into rows of 3
   const rows = [];
-  for (let i = 0; i < weddingShoes.length; i += 3) {
-    rows.push(weddingShoes.slice(i, i + 3));
+  for (let i = 0; i < products.shoes.length; i += 3) {
+    rows.push(products.shoes.slice(i, i + 3));
   }
 
   return (
@@ -98,7 +38,10 @@ export default function WeddingShoesPage() {
                   <p className="text-gray-600 mb-4">{shoe.description}</p>
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-bold text-[#B76E79]">${shoe.price}</span>
-                    <button className="bg-[#B76E79] text-white px-4 py-2 rounded-md hover:bg-pink-700 transition-colors">
+                    <button 
+                      onClick={() => addToCart(shoe)}
+                      className="bg-[#B76E79] text-white px-4 py-2 rounded-md hover:bg-pink-700 transition-colors"
+                    >
                       Add to Cart
                     </button>
                   </div>
