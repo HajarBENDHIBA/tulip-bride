@@ -3,14 +3,74 @@
 import { useCart } from '@/context/CartContext';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 export default function CartPage() {
+  const router = useRouter();
   const { cart, total, removeFromCart, updateQuantity, clearCart } = useCart();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleCheckout = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
+      // Create order
+      const response = await fetch('http://localhost:5000/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          items: cart.map(item => ({
+            product: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            image: item.image
+          })),
+          total,
+          paymentMethod: 'credit_card'
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Failed to create order');
+      }
+
+      // Clear cart and redirect to dashboard
+      clearCart();
+      router.push('/user/dashboard?tab=orders');
+    } catch (err) {
+      console.error('Checkout error:', err);
+      setError(err.message || 'An error occurred while creating your order. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-gradient-to-t from-[#FEFEF8] to-white">
       <div className="max-w-7xl mx-auto px-4 py-12">
         <h1 className="text-4xl font-serif font-bold text-center text-[#6E6E6E] mb-12">Shopping Cart</h1>
+
+        {error && (
+          <div className="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
 
         {cart.length === 0 ? (
           <div className="text-center py-12">
@@ -101,12 +161,13 @@ export default function CartPage() {
                   >
                     Clear Cart
                   </button>
-                  <Link
-                    href="/checkout"
-                    className="block w-full bg-[#B76E79] text-white px-4 py-2 rounded-md hover:bg-pink-700 transition-colors text-center"
+                  <button
+                    onClick={handleCheckout}
+                    disabled={loading}
+                    className="w-full bg-[#B76E79] text-white px-4 py-2 rounded-md hover:bg-pink-700 transition-colors disabled:opacity-50"
                   >
-                    Proceed to Checkout
-                  </Link>
+                    {loading ? 'Processing...' : 'Proceed to Checkout'}
+                  </button>
                 </div>
               </div>
             </div>

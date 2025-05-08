@@ -8,8 +8,7 @@ const orderSchema = new mongoose.Schema({
   },
   items: [{
     product: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Product',
+      type: String,
       required: true
     },
     name: {
@@ -38,28 +37,6 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'],
     default: 'Pending'
-  },
-  shippingAddress: {
-    street: {
-      type: String,
-      required: true
-    },
-    city: {
-      type: String,
-      required: true
-    },
-    state: {
-      type: String,
-      required: true
-    },
-    zipCode: {
-      type: String,
-      required: true
-    },
-    country: {
-      type: String,
-      required: true
-    }
   },
   paymentMethod: {
     type: String,
