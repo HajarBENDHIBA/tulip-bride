@@ -62,6 +62,8 @@ export default function AdminDashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [newProduct, setNewProduct] = useState({
@@ -70,6 +72,11 @@ export default function AdminDashboard() {
     description: '',
     image: '',
     category: 'flowers'
+  });
+  const [editUserData, setEditUserData] = useState({
+    name: '',
+    email: '',
+    role: ''
   });
 
   useEffect(() => {
@@ -210,7 +217,7 @@ export default function AdminDashboard() {
       }
 
       const data = await response.json();
-      return data.imagePath;
+      return `http://localhost:5000${data.imagePath}`;
     } catch (err) {
       setError(err.message);
       return null;
@@ -353,6 +360,99 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleEditUser = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/users/${selectedUser._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(editUserData)
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to update user');
+      }
+
+      // Update the user in the local state
+      setUsers(users.map(user => 
+        user._id === selectedUser._id ? { ...user, ...editUserData } : user
+      ));
+
+      setShowEditUserModal(false);
+      setSelectedUser(null);
+      setEditUserData({ name: '', email: '', role: '' });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (user) => {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+
+    try {
+      setLoading(true);
+      setError('');
+
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/users/${user._id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to delete user');
+      }
+
+      // Remove the user from the local state
+      setUsers(users.filter(u => u._id !== user._id));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId) => {
+    if (!confirm('Are you sure you want to delete this order?')) return;
+
+    try {
+      setLoading(true);
+      setError('');
+
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to delete order');
+      }
+
+      // Remove the order from the local state
+      setOrders(orders.filter(order => order._id !== orderId));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-gradient-to-t from-[#FEFEF8] to-white">
@@ -476,16 +576,6 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   className={`pb-4 px-2 ${
-                    activeCategory === 'flowers'
-                      ? 'border-b-2 border-pink-600 text-pink-600'
-                      : 'text-gray-600 hover:text-pink-600'
-                  }`}
-                  onClick={() => setActiveCategory('flowers')}
-                >
-                  Flowers
-                </button>
-                <button
-                  className={`pb-4 px-2 ${
                     activeCategory === 'gowns'
                       ? 'border-b-2 border-pink-600 text-pink-600'
                       : 'text-gray-600 hover:text-pink-600'
@@ -503,6 +593,16 @@ export default function AdminDashboard() {
                   onClick={() => setActiveCategory('shoes')}
                 >
                   Shoes
+                </button>
+                <button
+                  className={`pb-4 px-2 ${
+                    activeCategory === 'flowers'
+                      ? 'border-b-2 border-pink-600 text-pink-600'
+                      : 'text-gray-600 hover:text-pink-600'
+                  }`}
+                  onClick={() => setActiveCategory('flowers')}
+                >
+                  Flowers
                 </button>
                 <button
                   className={`pb-4 px-2 ${
@@ -534,11 +634,10 @@ export default function AdminDashboard() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="h-10 w-10 relative">
-                            <Image
+                            <img
                               src={product.image}
                               alt={product.name}
-                              fill
-                              className="object-cover rounded-md"
+                              className="object-cover rounded-md w-full h-full"
                             />
                           </div>
                           <div className="ml-4">
@@ -591,9 +690,9 @@ export default function AdminDashboard() {
                         onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-pink-500 focus:ring-pink-500"
                       >
-                        <option value="flowers">Flowers</option>
                         <option value="gowns">Gowns</option>
                         <option value="shoes">Shoes</option>
+                        <option value="flowers">Flowers</option>
                         <option value="jewelry">Jewelry</option>
                       </select>
                     </div>
@@ -684,9 +783,9 @@ export default function AdminDashboard() {
                         onChange={(e) => setSelectedProduct({ ...selectedProduct, category: e.target.value })}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-pink-500 focus:ring-pink-500"
                       >
-                        <option value="flowers">Flowers</option>
                         <option value="gowns">Gowns</option>
                         <option value="shoes">Shoes</option>
+                        <option value="flowers">Flowers</option>
                         <option value="jewelry">Jewelry</option>
                       </select>
                     </div>
@@ -786,7 +885,7 @@ export default function AdminDashboard() {
                         Placed on {new Date(order.createdAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex items-center gap-4">
                       <select
                         value={order.status}
                         onChange={(e) => handleStatusUpdate(order._id, e.target.value)}
@@ -798,7 +897,16 @@ export default function AdminDashboard() {
                         <option value="Delivered">Delivered</option>
                         <option value="Cancelled">Cancelled</option>
                       </select>
-                      <p className="mt-1 font-semibold">${order.total.toFixed(2)}</p>
+                      <div className="flex flex-col items-end">
+                        <p className="font-semibold">${order.total.toFixed(2)}</p>
+                        <button
+                          onClick={() => handleDeleteOrder(order._id)}
+                          className="text-red-600 hover:text-red-900 mt-2"
+                          title="Delete Order"
+                        >
+                          <FaTrash />
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <div className="border-t pt-4">
@@ -869,10 +977,24 @@ export default function AdminDashboard() {
                           {new Date(user.createdAt).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button className="text-[#B76E79] hover:text-pink-700 mr-4">
+                          <button 
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setEditUserData({
+                                name: user.name,
+                                email: user.email,
+                                role: user.role
+                              });
+                              setShowEditUserModal(true);
+                            }}
+                            className="text-[#B76E79] hover:text-pink-700 mr-4"
+                          >
                             <FaEdit />
                           </button>
-                          <button className="text-red-600 hover:text-red-900">
+                          <button 
+                            onClick={() => handleDeleteUser(user)}
+                            className="text-red-600 hover:text-red-900"
+                          >
                             <FaTrash />
                           </button>
                         </td>
@@ -884,6 +1006,65 @@ export default function AdminDashboard() {
             ) : (
               <div className="bg-white p-6 rounded-lg shadow-md text-center">
                 <p className="text-gray-600">No users found</p>
+              </div>
+            )}
+
+            {/* Edit User Modal */}
+            {showEditUserModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                  <h3 className="text-xl font-semibold mb-4">Edit User</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Name</label>
+                      <input
+                        type="text"
+                        value={editUserData.name}
+                        onChange={(e) => setEditUserData({ ...editUserData, name: e.target.value })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-pink-500 focus:ring-pink-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Email</label>
+                      <input
+                        type="email"
+                        value={editUserData.email}
+                        onChange={(e) => setEditUserData({ ...editUserData, email: e.target.value })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-pink-500 focus:ring-pink-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Role</label>
+                      <select
+                        value={editUserData.role}
+                        onChange={(e) => setEditUserData({ ...editUserData, role: e.target.value })}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-pink-500 focus:ring-pink-500"
+                      >
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                    <div className="flex justify-end space-x-3 mt-6">
+                      <button
+                        onClick={() => {
+                          setShowEditUserModal(false);
+                          setSelectedUser(null);
+                          setEditUserData({ name: '', email: '', role: '' });
+                        }}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleEditUser}
+                        disabled={loading}
+                        className="px-4 py-2 text-sm font-medium text-white bg-[#B76E79] hover:bg-pink-700 rounded-md disabled:opacity-50"
+                      >
+                        {loading ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

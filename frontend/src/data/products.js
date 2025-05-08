@@ -127,13 +127,6 @@ export const products = {
       price: 400,
       image: '/dresses/dress9.jpg',
       description: 'Inspired by classic designs with lace overlays and covered buttons for an antique feel.'
-    },
-    {
-      name: 'Dress',
-      price: 100,
-      description: 'White Dress',
-      image: '/uploads/gowns/1746729072761-514632761.jpg',
-      id: 'gowns-10'
     }
   ],
   shoes: [
