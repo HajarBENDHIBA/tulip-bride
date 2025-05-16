@@ -5,17 +5,16 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { FaPlus, FaEdit, FaTrash } from 'react-icons/fa';
-import { products } from '@/data/products';
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('overview');
   const [activeCategory, setActiveCategory] = useState('all');
-  const [stats] = useState({
-    totalOrders: 156,
-    totalRevenue: 45678.90,
-    totalUsers: 89,
-    totalProducts: Object.values(products).flat().length
+  const [stats, setStats] = useState({
+    totalOrders: 0,
+    totalRevenue: 0,
+    totalUsers: 0,
+    totalProducts: 0
   });
 
   const [recentOrders] = useState([
@@ -35,25 +34,7 @@ export default function AdminDashboard() {
     }
   ]);
 
-  // Combine all products into a single array with category information
-  const [productsList] = useState(() => {
-    const allProducts = [];
-    Object.entries(products).forEach(([category, items]) => {
-      items.forEach(item => {
-        allProducts.push({
-          ...item,
-          category: category.charAt(0).toUpperCase() + category.slice(1)
-        });
-      });
-    });
-    return allProducts;
-  });
-
-  // Filter products based on active category
-  const filteredProducts = activeCategory === 'all' 
-    ? productsList 
-    : productsList.filter(product => product.category.toLowerCase() === activeCategory);
-
+  const [productsList, setProductsList] = useState([]);
   const [orders, setOrders] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,68 +87,100 @@ export default function AdminDashboard() {
   }, [router]);
 
   useEffect(() => {
-    const fetchOrders = async () => {
-      if (!isAuthenticated || activeTab !== 'orders') return;
+    const fetchProducts = async () => {
+      if (!isAuthenticated) return;
 
       try {
         setLoading(true);
         setError('');
 
+        const token = localStorage.getItem('token');
+        const response = await fetch('http://localhost:5000/api/products', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch products');
+        }
+
+        const data = await response.json();
+        const allProducts = [];
+        Object.entries(data).forEach(([category, items]) => {
+          items.forEach(item => {
+            allProducts.push({
+              ...item,
+              category: category.charAt(0).toUpperCase() + category.slice(1)
+            });
+          });
+        });
+        setProductsList(allProducts);
+        setStats(prev => ({ ...prev, totalProducts: allProducts.length }));
+      } catch (err) {
+        console.error('Fetch products error:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Fetch Orders
+    const fetchOrders = async () => {
+      try {
         const token = localStorage.getItem('token');
         const response = await fetch('http://localhost:5000/api/orders', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch orders');
-        }
-
+        if (!response.ok) throw new Error('Failed to fetch orders');
         const data = await response.json();
         setOrders(data);
+        setStats(prev => ({
+          ...prev,
+          totalOrders: data.length,
+          totalRevenue: data.reduce((sum, order) => sum + order.total, 0)
+        }));
       } catch (err) {
-        console.error('Fetch orders error:', err);
         setError(err.message);
-      } finally {
-        setLoading(false);
       }
     };
 
-    fetchOrders();
-  }, [isAuthenticated, activeTab]);
-
-  useEffect(() => {
+    // Fetch Users
     const fetchUsers = async () => {
-      if (!isAuthenticated || activeTab !== 'users') return;
-
       try {
-        setLoading(true);
-        setError('');
-
         const token = localStorage.getItem('token');
         const response = await fetch('http://localhost:5000/api/users', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch users');
-        }
-
+        if (!response.ok) throw new Error('Failed to fetch users');
         const data = await response.json();
         setUsers(data);
+        // Only count users with role 'user' for the dashboard
+        const userCount = data.filter(u => u.role === 'user').length;
+        setStats(prev => ({ ...prev, totalUsers: userCount }));
       } catch (err) {
-        console.error('Fetch users error:', err);
         setError(err.message);
-      } finally {
-        setLoading(false);
       }
     };
 
+    fetchOrders();
     fetchUsers();
-  }, [isAuthenticated, activeTab]);
+  }, [isAuthenticated]);
+
+  // Filter products based on active category
+  const filteredProducts = activeCategory === 'all' 
+    ? productsList 
+    : productsList.filter(product => product.category.toLowerCase() === activeCategory);
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
@@ -231,14 +244,22 @@ export default function AdminDashboard() {
       setError('');
       const token = localStorage.getItem('token');
 
-      // Upload image first if there's a file
+      // First, upload the image if it's a blob URL
       let imagePath = newProduct.image;
-      if (imagePreview) {
-        const uploadedPath = await handleImageUpload(imagePreview, newProduct.category);
-        if (!uploadedPath) return;
-        imagePath = uploadedPath;
+      if (newProduct.image && newProduct.image.startsWith('blob:')) {
+        // Convert blob URL to File object
+        const response = await fetch(newProduct.image);
+        const blob = await response.blob();
+        const file = new File([blob], 'product-image.jpg', { type: blob.type });
+        
+        // Upload the image
+        imagePath = await handleImageUpload(file, newProduct.category);
+        if (!imagePath) {
+          throw new Error('Failed to upload image');
+        }
       }
 
+      // Then add the product with the image path
       const response = await fetch('http://localhost:5000/api/products', {
         method: 'POST',
         headers: {
@@ -257,14 +278,33 @@ export default function AdminDashboard() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to add product');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to add product');
       }
 
       // Refresh products list
-      const updatedProducts = await fetch('http://localhost:5000/api/products').then(res => res.json());
-      setProductsList(Object.entries(updatedProducts).flatMap(([category, items]) => 
-        items.map(item => ({ ...item, category: category.charAt(0).toUpperCase() + category.slice(1) }))
-      ));
+      const productsResponse = await fetch('http://localhost:5000/api/products', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!productsResponse.ok) {
+        throw new Error('Failed to fetch updated products');
+      }
+
+      const data = await productsResponse.json();
+      const allProducts = [];
+      Object.entries(data).forEach(([category, items]) => {
+        items.forEach(item => {
+          allProducts.push({
+            ...item,
+            category: category.charAt(0).toUpperCase() + category.slice(1)
+          });
+        });
+      });
+      setProductsList(allProducts);
+      setStats(prev => ({ ...prev, totalProducts: allProducts.length }));
 
       setShowAddModal(false);
       setNewProduct({
@@ -276,6 +316,7 @@ export default function AdminDashboard() {
       });
       setImagePreview(null);
     } catch (err) {
+      console.error('Error adding product:', err);
       setError(err.message);
     }
   };
@@ -284,15 +325,6 @@ export default function AdminDashboard() {
     try {
       setError('');
       const token = localStorage.getItem('token');
-
-      // Upload new image if there's a file
-      let imagePath = selectedProduct.image;
-      if (imagePreview) {
-        const uploadedPath = await handleImageUpload(imagePreview, selectedProduct.category.toLowerCase());
-        if (!uploadedPath) return;
-        imagePath = uploadedPath;
-      }
-
       const response = await fetch(`http://localhost:5000/api/products/${selectedProduct.id}`, {
         method: 'PUT',
         headers: {
@@ -305,7 +337,7 @@ export default function AdminDashboard() {
             name: selectedProduct.name,
             price: parseFloat(selectedProduct.price),
             description: selectedProduct.description,
-            image: imagePath
+            image: selectedProduct.image
           }
         })
       });
@@ -315,26 +347,42 @@ export default function AdminDashboard() {
       }
 
       // Refresh products list
-      const updatedProducts = await fetch('http://localhost:5000/api/products').then(res => res.json());
-      setProductsList(Object.entries(updatedProducts).flatMap(([category, items]) => 
-        items.map(item => ({ ...item, category: category.charAt(0).toUpperCase() + category.slice(1) }))
-      ));
+      const productsResponse = await fetch('http://localhost:5000/api/products', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!productsResponse.ok) {
+        throw new Error('Failed to fetch updated products');
+      }
+
+      const data = await productsResponse.json();
+      const allProducts = [];
+      Object.entries(data).forEach(([category, items]) => {
+        items.forEach(item => {
+          allProducts.push({
+            ...item,
+            category: category.charAt(0).toUpperCase() + category.slice(1)
+          });
+        });
+      });
+      setProductsList(allProducts);
 
       setShowEditModal(false);
       setSelectedProduct(null);
-      setImagePreview(null);
     } catch (err) {
       setError(err.message);
     }
   };
 
   const handleDeleteProduct = async (product) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
-
+    if (!window.confirm(`Are you sure you want to delete "${product.name}"? This action cannot be undone.`)) {
+      return;
+    }
     try {
       setError('');
       const token = localStorage.getItem('token');
-
       const response = await fetch(`http://localhost:5000/api/products/${product.id}`, {
         method: 'DELETE',
         headers: {
@@ -351,10 +399,28 @@ export default function AdminDashboard() {
       }
 
       // Refresh products list
-      const updatedProducts = await fetch('http://localhost:5000/api/products').then(res => res.json());
-      setProductsList(Object.entries(updatedProducts).flatMap(([category, items]) => 
-        items.map(item => ({ ...item, category: category.charAt(0).toUpperCase() + category.slice(1) }))
-      ));
+      const productsResponse = await fetch('http://localhost:5000/api/products', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!productsResponse.ok) {
+        throw new Error('Failed to fetch updated products');
+      }
+
+      const data = await productsResponse.json();
+      const allProducts = [];
+      Object.entries(data).forEach(([category, items]) => {
+        items.forEach(item => {
+          allProducts.push({
+            ...item,
+            category: category.charAt(0).toUpperCase() + category.slice(1)
+          });
+        });
+      });
+      setProductsList(allProducts);
+      setStats(prev => ({ ...prev, totalProducts: allProducts.length }));
     } catch (err) {
       setError(err.message);
     }
@@ -538,7 +604,7 @@ export default function AdminDashboard() {
             </div>
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h3 className="text-lg font-semibold text-gray-600">Total Users</h3>
-              <p className="text-3xl font-bold text-[#B76E79]">{users.length}</p>
+              <p className="text-3xl font-bold text-[#B76E79]">{users.filter(u => u.role === 'user').length}</p>
             </div>
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h3 className="text-lg font-semibold text-gray-600">Total Products</h3>

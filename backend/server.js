@@ -3,10 +3,12 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const orderRoutes = require('./routes/orders');
 const productRoutes = require('./routes/products');
+const connectDB = require('./db');
 
 // Check environment variables
 if (!process.env.MONGODB_URI) {
@@ -21,12 +23,22 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 
+// Create upload directories if they don't exist
+const categories = ['gowns', 'flowers', 'shoes', 'jewelry'];
+const uploadDir = path.join(__dirname, 'public', 'uploads');
+categories.forEach(category => {
+  const categoryDir = path.join(uploadDir, category);
+  if (!fs.existsSync(categoryDir)) {
+    fs.mkdirSync(categoryDir, { recursive: true });
+  }
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // Serve static files from the uploads directory
-app.use('/uploads', express.static(path.join(__dirname, '../frontend/public/uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -49,15 +61,7 @@ app.use((err, req, res, next) => {
 });
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('Connected to MongoDB');
-    console.log('Database:', process.env.MONGODB_URI);
-  })
-  .catch(err => {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
-  });
+connectDB();
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

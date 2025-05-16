@@ -2,20 +2,17 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
-const fs = require('fs').promises;
 const path = require('path');
 const multer = require('multer');
+const Product = require('../models/Product');
 
 // Configure multer for image upload
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const category = req.body.category || 'misc';
-    const uploadPath = path.join(__dirname, '../../frontend/public/uploads', category);
-    fs.mkdir(uploadPath, { recursive: true }).then(() => {
-      cb(null, uploadPath);
-    }).catch(err => {
-      cb(err);
-    });
+    const uploadPath = path.join(__dirname, '../public/uploads', category);
+    require('fs').mkdirSync(uploadPath, { recursive: true });
+    cb(null, uploadPath);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -45,33 +42,38 @@ router.post('/upload', [auth, admin, upload.single('image')], async (req, res) =
 
     const category = req.body.category || 'misc';
     const imagePath = `/uploads/${category}/${req.file.filename}`;
+    const fullImageUrl = `http://localhost:5000${imagePath}`;
     
+    console.log('Image uploaded:', {
+      filename: req.file.filename,
+      path: imagePath,
+      fullUrl: fullImageUrl,
+      category: category
+    });
+
     res.json({ 
       message: 'Image uploaded successfully',
-      imagePath: imagePath
+      imagePath: imagePath,
+      fullImageUrl: fullImageUrl
     });
   } catch (error) {
     console.error('Error uploading image:', error);
-    res.status(500).json({ message: 'Error uploading image', error: error.message });
+    res.status(500).json({ 
+      message: 'Error uploading image', 
+      error: error.message 
+    });
   }
 });
 
-// Get all products
+// Get all products, grouped by category
 router.get('/', async (req, res) => {
   try {
-    const productsPath = path.join(__dirname, '../../frontend/src/data/products.js');
-    const fileContent = await fs.readFile(productsPath, 'utf8');
-    // Extract the products object from the file content
-    const productsMatch = fileContent.match(/export const products = ({[\s\S]*});/);
-    if (!productsMatch) {
-      throw new Error('Invalid products file format');
-    }
-    // Convert single quotes to double quotes and handle unquoted property names
-    const jsonStr = productsMatch[1]
-      .replace(/'/g, '"')  // Replace single quotes with double quotes
-      .replace(/(\w+):/g, '"$1":');  // Quote property names
-    const productsData = JSON.parse(jsonStr);
-    res.json(productsData);
+    const products = await Product.find();
+    const grouped = { gowns: [], flowers: [], shoes: [], jewelry: [] };
+    products.forEach(p => {
+      if (grouped[p.category]) grouped[p.category].push(p);
+    });
+    res.json(grouped);
   } catch (error) {
     console.error('Error fetching products:', error);
     res.status(500).json({ message: 'Error fetching products', error: error.message });
@@ -83,88 +85,83 @@ router.post('/', [auth, admin], async (req, res) => {
   try {
     const { category, product } = req.body;
     
+    // Validate required fields
     if (!category || !product) {
       return res.status(400).json({ message: 'Category and product data are required' });
     }
 
-    const productsPath = path.join(__dirname, '../../frontend/src/data/products.js');
-    const fileContent = await fs.readFile(productsPath, 'utf8');
-    
-    // Extract the products object from the file content
-    const productsMatch = fileContent.match(/export const products = ({[\s\S]*});/);
-    if (!productsMatch) {
-      throw new Error('Invalid products file format');
+    // Validate category
+    const validCategories = ['gowns', 'flowers', 'shoes', 'jewelry'];
+    if (!validCategories.includes(category)) {
+      return res.status(400).json({ message: 'Invalid category' });
     }
-    // Convert single quotes to double quotes and handle unquoted property names
-    const jsonStr = productsMatch[1]
-      .replace(/'/g, '"')  // Replace single quotes with double quotes
-      .replace(/(\w+):/g, '"$1":');  // Quote property names
-    const productsData = JSON.parse(jsonStr);
 
-    // Generate new ID
-    const categoryProducts = productsData[category] || [];
-    const lastId = categoryProducts.length > 0 
-      ? parseInt(categoryProducts[categoryProducts.length - 1].id.split('-')[1])
-      : 0;
-    const newId = `${category}-${lastId + 1}`;
+    // Validate product data
+    if (!product.name || !product.price || !product.description || !product.image) {
+      return res.status(400).json({ message: 'Missing required product fields' });
+    }
 
-    // Add new product
-    productsData[category] = [...categoryProducts, { ...product, id: newId }];
+    // Generate a unique id for the product
+    const count = await Product.countDocuments({ category });
+    const idPrefix = {
+      'gowns': 'gown',
+      'flowers': 'flower',
+      'shoes': 'shoe',
+      'jewelry': 'jewelry'
+    }[category];
+    const newId = `${idPrefix}-${count + 1}`;
 
-    // Write back to file with proper formatting
-    const newContent = `export const products = ${JSON.stringify(productsData, null, 2)
-      .replace(/"(\w+)":/g, '$1:')  // Remove quotes from property names
-      .replace(/"/g, "'")};`;  // Replace double quotes with single quotes
-    await fs.writeFile(productsPath, newContent);
+    // Handle image path - ensure it's the full URL
+    let imagePath = product.image;
+    if (!imagePath.startsWith('http://localhost:5000')) {
+      imagePath = `http://localhost:5000${imagePath}`;
+    }
 
-    res.status(201).json({ message: 'Product added successfully', product: { ...product, id: newId } });
+    // Create new product
+    const newProduct = new Product({
+      name: product.name,
+      price: Number(product.price),
+      description: product.description,
+      image: imagePath,
+      category: category,
+      id: newId
+    });
+
+    // Save product
+    const savedProduct = await newProduct.save();
+    console.log('New product saved:', savedProduct); // Debug log
+
+    res.status(201).json({ 
+      message: 'Product added successfully', 
+      product: savedProduct 
+    });
   } catch (error) {
     console.error('Error adding product:', error);
-    res.status(500).json({ message: 'Error adding product', error: error.message });
+    res.status(500).json({ 
+      message: 'Error adding product', 
+      error: error.message 
+    });
   }
 });
 
 // Update product (admin only)
 router.put('/:id', [auth, admin], async (req, res) => {
   try {
-    const { id } = req.params;
     const { category, product } = req.body;
-
     if (!category || !product) {
       return res.status(400).json({ message: 'Category and product data are required' });
     }
-
-    const productsPath = path.join(__dirname, '../../frontend/src/data/products.js');
-    const fileContent = await fs.readFile(productsPath, 'utf8');
-    
-    // Extract the products object from the file content
-    const productsMatch = fileContent.match(/export const products = ({[\s\S]*});/);
-    if (!productsMatch) {
-      throw new Error('Invalid products file format');
+    let imagePath = product.image;
+    if (imagePath && imagePath.startsWith('http://localhost:5000')) {
+      imagePath = imagePath.replace('http://localhost:5000', '');
     }
-    // Convert single quotes to double quotes and handle unquoted property names
-    const jsonStr = productsMatch[1]
-      .replace(/'/g, '"')  // Replace single quotes with double quotes
-      .replace(/(\w+):/g, '"$1":');  // Quote property names
-    const productsData = JSON.parse(jsonStr);
-
-    // Find and update product
-    const categoryProducts = productsData[category] || [];
-    const productIndex = categoryProducts.findIndex(p => p.id === id);
-
-    if (productIndex === -1) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-
-    productsData[category][productIndex] = { ...product, id };
-
-    // Write back to file with proper formatting
-    const newContent = `export const products = ${JSON.stringify(productsData, null, 2)
-      .replace(/"(\w+)":/g, '$1:')  // Remove quotes from property names
-      .replace(/"/g, "'")};`;  // Replace double quotes with single quotes
-    await fs.writeFile(productsPath, newContent);
-
-    res.json({ message: 'Product updated successfully', product: { ...product, id } });
+    const updated = await Product.findOneAndUpdate(
+      { id: req.params.id },
+      { ...product, category, image: imagePath },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ message: 'Product not found' });
+    res.json({ message: 'Product updated successfully', product: updated });
   } catch (error) {
     console.error('Error updating product:', error);
     res.status(500).json({ message: 'Error updating product', error: error.message });
@@ -174,54 +171,9 @@ router.put('/:id', [auth, admin], async (req, res) => {
 // Delete product (admin only)
 router.delete('/:id', [auth, admin], async (req, res) => {
   try {
-    const { id } = req.params;
-    const { category } = req.body;
-
-    if (!category) {
-      return res.status(400).json({ message: 'Category is required' });
-    }
-
-    const productsPath = path.join(__dirname, '../../frontend/src/data/products.js');
-    const fileContent = await fs.readFile(productsPath, 'utf8');
-    
-    // Extract the products object from the file content
-    const productsMatch = fileContent.match(/export const products = ({[\s\S]*});/);
-    if (!productsMatch) {
-      throw new Error('Invalid products file format');
-    }
-    // Convert single quotes to double quotes and handle unquoted property names
-    const jsonStr = productsMatch[1]
-      .replace(/'/g, '"')  // Replace single quotes with double quotes
-      .replace(/(\w+):/g, '"$1":');  // Quote property names
-    const productsData = JSON.parse(jsonStr);
-
-    // Find and remove product
-    const categoryProducts = productsData[category] || [];
-    const productIndex = categoryProducts.findIndex(p => p.id === id);
-
-    if (productIndex === -1) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-
-    // Delete the product's image file if it exists
-    const product = categoryProducts[productIndex];
-    if (product.image && product.image.startsWith('/uploads/')) {
-      const imagePath = path.join(__dirname, '../../frontend/public', product.image);
-      try {
-        await fs.unlink(imagePath);
-      } catch (err) {
-        console.error('Error deleting image file:', err);
-      }
-    }
-
-    productsData[category] = categoryProducts.filter(p => p.id !== id);
-
-    // Write back to file with proper formatting
-    const newContent = `export const products = ${JSON.stringify(productsData, null, 2)
-      .replace(/"(\w+)":/g, '$1:')  // Remove quotes from property names
-      .replace(/"/g, "'")};`;  // Replace double quotes with single quotes
-    await fs.writeFile(productsPath, newContent);
-
+    const deleted = await Product.findOneAndDelete({ id: req.params.id });
+    if (!deleted) return res.status(404).json({ message: 'Product not found' });
+    // Optionally, delete the image file from disk here if needed
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
     console.error('Error deleting product:', error);

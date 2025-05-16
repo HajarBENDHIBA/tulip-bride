@@ -17,6 +17,7 @@ export default function UserDashboard() {
     newPassword: '',
     confirmPassword: ''
   });
+  const [confirmedOrderIds, setConfirmedOrderIds] = useState([]);
   
   // Set active tab from URL parameter
   useEffect(() => {
@@ -156,6 +157,109 @@ export default function UserDashboard() {
     }
   };
 
+  const handleDeleteOrder = async (orderId) => {
+    if (!window.confirm('Are you sure you want to delete this order? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      setError('');
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to delete order');
+      }
+      // Refresh orders list
+      setOrders(orders.filter(order => order._id !== orderId));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteProduct = async (product) => {
+    if (!window.confirm(`Are you sure you want to delete "${product.name}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      setError('');
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:5000/api/products/${product.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          category: product.category.toLowerCase()
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete product');
+      }
+
+      // Refresh products list
+      const productsResponse = await fetch('http://localhost:5000/api/products', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!productsResponse.ok) {
+        throw new Error('Failed to fetch updated products');
+      }
+
+      const data = await productsResponse.json();
+      const allProducts = [];
+      Object.entries(data).forEach(([category, items]) => {
+        items.forEach(item => {
+          allProducts.push({
+            ...item,
+            category: category.charAt(0).toUpperCase() + category.slice(1)
+          });
+        });
+      });
+      setProductsList(allProducts);
+      setStats(prev => ({ ...prev, totalProducts: allProducts.length }));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleConfirmOrder = (orderId) => {
+    setConfirmedOrderIds((prev) => [...prev, orderId]);
+  };
+
+  const generateWhatsappMessage = () => {
+    if (!user) return '';
+    let message = `Hello, my name is ${user.name} and my email is ${user.email}.%0A`;
+    const confirmedOrders = orders.filter(order => confirmedOrderIds.includes(order._id));
+    if (confirmedOrders.length === 0) {
+      message += 'I have no confirmed orders yet.';
+    } else {
+      confirmedOrders.forEach((order, idx) => {
+        message += `Here is my confirmed order:%0A`;
+        order.items.forEach(item => {
+          message += `- ${item.name} x${item.quantity} ($${item.price.toFixed(2)} each)%0A`;
+        });
+        message += `Total: $${order.total.toFixed(2)}%0A`;
+        message += '%0A';
+      });
+      message += 'Thank you!';
+    }
+    return message;
+  };
+  const whatsappNumber = '212762752337';
+  const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${generateWhatsappMessage()}`;
+
   if (loading && !user) {
     return (
       <main className="min-h-screen bg-gradient-to-t from-[#FEFEF8] to-white">
@@ -279,6 +383,20 @@ export default function UserDashboard() {
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
+            <div className="flex justify-end mb-4">
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg shadow hover:bg-green-600 transition-colors ${confirmedOrderIds.length === 0 ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+                tabIndex={confirmedOrderIds.length === 0 ? -1 : 0}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12c0 5.385 4.365 9.75 9.75 9.75 1.7 0 3.29-.425 4.68-1.17l3.57 1.02a.75.75 0 00.93-.93l-1.02-3.57A9.708 9.708 0 0021.75 12c0-5.385-4.365-9.75-9.75-9.75S2.25 6.615 2.25 12z" />
+                </svg>
+                Contact us on WhatsApp
+              </a>
+            </div>
             {loading ? (
               <div className="flex justify-center items-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600"></div>
@@ -290,18 +408,34 @@ export default function UserDashboard() {
                     <div>
                       <h3 className="font-semibold">Order #{order._id}</h3>
                       <p className="text-sm text-gray-600">Placed on {new Date(order.createdAt).toLocaleDateString()}</p>
+                      {confirmedOrderIds.includes(order._id) && (
+                        <span className="inline-block mt-1 px-2 py-1 text-xs bg-green-100 text-green-700 rounded">Confirmed</span>
+                      )}
                     </div>
-                    <div className="text-right">
-                      <span className={`px-3 py-1 rounded-full text-sm ${order.status === 'Delivered' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {order.status}
-                      </span>
+                    <div className="text-right flex flex-col items-end gap-2">
+                      <span className={`px-3 py-1 rounded-full text-sm ${order.status === 'Delivered' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{order.status}</span>
                       <p className="mt-1 font-semibold">${order.total.toFixed(2)}</p>
+                      <button
+                        onClick={() => handleDeleteOrder(order._id)}
+                        className="mt-2 px-3 py-1 bg-red-500 text-white rounded hover:bg-red-700 text-xs"
+                        disabled={loading}
+                      >
+                        {loading ? 'Deleting...' : 'Delete Order'}
+                      </button>
+                      {!confirmedOrderIds.includes(order._id) && (
+                        <button
+                          onClick={() => handleConfirmOrder(order._id)}
+                          className="mt-2 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-700 text-xs"
+                        >
+                          Confirm Order
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="border-t pt-4">
                     {order.items.map((item, index) => (
-                      <div key={index} className="flex items-center gap-4">
-                        <div className="relative w-20 h-20">
+                      <div key={index} className="flex items-center gap-4 my-2">
+                        <div className="relative w-20 h-20 my-2">
                           <Image
                             src={item.image}
                             alt={item.name}

@@ -1,16 +1,58 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
-import { products } from '@/data/products';
 
 export default function WeddingJewelryPage() {
   const { addToCart } = useCart();
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/products');
+        if (!response.ok) {
+          throw new Error('Failed to fetch products');
+        }
+        const data = await response.json();
+        setProducts(data.jewelry || []);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+  }, []);
+
   // Split into rows of 3
   const rows = [];
-  for (let i = 0; i < products.jewelry.length; i += 3) {
-    rows.push(products.jewelry.slice(i, i + 3));
+  for (let i = 0; i < products.length; i += 3) {
+    rows.push(products.slice(i, i + 3));
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-gradient-to-t from-[#FEFEF8] to-white">
+        <div className="max-w-7xl mx-auto px-4 py-12">
+          <div className="text-center">Loading...</div>
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="min-h-screen bg-gradient-to-t from-[#FEFEF8] to-white">
+        <div className="max-w-7xl mx-auto px-4 py-12">
+          <div className="text-center text-red-600">{error}</div>
+        </div>
+      </main>
+    );
   }
 
   return (

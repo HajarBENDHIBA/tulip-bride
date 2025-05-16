@@ -56,6 +56,8 @@ router.post('/', auth, async (req, res) => {
   try {
     console.log('Creating order with data:', {
       user: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
       items: req.body.items,
       total: req.body.total,
       paymentMethod: req.body.paymentMethod
@@ -82,6 +84,8 @@ router.post('/', auth, async (req, res) => {
 
     const order = new Order({
       user: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
       items,
       total,
       paymentMethod
@@ -144,12 +148,17 @@ router.put('/:id/payment', auth, async (req, res) => {
 });
 
 // Delete order (admin only)
-router.delete('/:id', [auth, admin], async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Allow only the order owner or admin to delete
+    if (order.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized' });
     }
 
     await order.deleteOne();
