@@ -9,6 +9,8 @@ const userRoutes = require('./routes/users');
 const orderRoutes = require('./routes/orders');
 const productRoutes = require('./routes/products');
 const connectDB = require('./db');
+const contactRoutes = require('./routes/contact');
+const reviewRoutes = require('./routes/reviews');
 
 // Check environment variables
 if (!process.env.MONGODB_URI) {
@@ -45,6 +47,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
